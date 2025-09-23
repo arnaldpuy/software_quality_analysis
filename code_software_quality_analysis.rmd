@@ -1,5 +1,5 @@
 ---
-title: "Software quality analysis"
+title: "Software quality analysis of fourteen hydrological model"
 author: "Arnald Puy"
 header-includes:
   - \usepackage[font=footnotesize]{caption}
@@ -79,7 +79,7 @@ selected.palette <- "Darjeeling1"
 
 ```{r dataset}
 
-# READ IN DATASET ##############################################################
+# READ IN DATASET #############################################################
 
 dt <- data.table(read.xlsx("./datasets/results_sqa.xlsx"))
 cols <- colnames(dt)
@@ -118,10 +118,39 @@ plot_comment_density <- dt[, .(total_lines_code = sum(lines_code),
 plot_comment_density
 ```
 
-```{r merge_plots_lines_comment_density, dependson=c("plot_lines_code", "plot_comment_density"),fig.height=1.5, fig.width=4.5}
+```{r plot_other_stats, dependson="dataset", fig.height=2.8, fig.width=6}
+
+model_ordered <- dt[, sum(lines), model] %>%
+  .[order(V1)] %>%
+  .[, model]
+
+col_names <- colnames(dt)
+
+facet_order <- c("lines", "lines_code", "lines_comments", "functions", 
+                 "lines_function", "files", "modules")
+
+plot_per_model <- melt(dt, measure.vars = col_names[-c(1, length(col_names))]) %>%
+  .[, variable:= factor(variable, levels = facet_order)] %>%
+  .[, model:= factor(model, levels = model_ordered)] %>%
+  .[!variable == "lines"] %>%
+  ggplot(., aes(model, value, fill = language)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(breaks = breaks_pretty(n = 2)) +
+  scale_fill_manual(values = color_languages) +
+  facet_wrap(~ variable, ncol = 7, scales = "free_x") +
+  labs(x = "", y = "N") +
+  theme_AP() +
+  theme(legend.position = "none")
+
+plot_per_model
+```
+
+```{r merge_plots_lines_comment_density, dependson=c("plot_lines_code", "plot_comment_density", "plot_other_stats"),fig.height=3.5, fig.width=5.8}
 
 # MERGE PLOTS ##################################################################
 
-plot_grid(plot_lines_code, plot_comment_density + labs(x = "Comment density", y  = ""), 
+top <- plot_grid(plot_lines_code, plot_comment_density + labs(x = "Comment density", y  = ""), 
           labels = "auto", rel_widths = c(0.4, 0.6))
+plot_grid(top, plot_per_model, ncol = 1, labels = c("", "c"), rel_heights = c(0.4, 0.6))
 ```

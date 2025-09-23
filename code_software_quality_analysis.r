@@ -89,3 +89,30 @@ plot_comment_density
 plot_grid(plot_lines_code, plot_comment_density + labs(x = "Comment density", y  = ""), 
           labels = "auto", rel_widths = c(0.4, 0.6))
 
+model_ordered <- dt[, sum(lines), model] %>%
+  .[order(V1)] %>%
+  .[, model]
+
+col_names <- colnames(dt)
+facet_order <- c("lines", "lines_code", "lines_comments", "functions", 
+                 "lines_code_per_function", "files", "modules")
+melt(dt, measure.vars = col_names[-c(1, length(col_names))]) %>%
+  ggplot(., aes(model, value), fill = language) +
+  geom_bar(stat = "identity") + 
+  coord_flip() +  
+  scale_y_continuous(breaks = breaks_pretty(n = 2)) +
+  facet_wrap(~variable, ncol = 7, scale = "free_x") + 
+  theme_AP() + 
+  theme(legend.position = "top")
+
+
+melt(dt, measure.vars = col_names[-c(1, length(col_names))]) %>%
+  ggplot(., aes(model, value, fill = language)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(breaks = breaks_pretty(n = 2)) +
+  facet_wrap(~ variable, ncol = 7, scales = "free_x") +
+  labs(x = "", y = "N") +
+  theme_AP() +
+  theme(legend.position = "top")
+
