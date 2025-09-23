@@ -22,3 +22,10 @@ introducing undesired behaviours in future model updates. The models are the fol
 * SACRAMENTO - Sacramento Soil Moisture Accounting Model.
 * SWAT - Soil and Water Assessment Tool.  
 * VIC - Variable Infiltration Capacity model.
+
+### Code
+
+We offer the code in `.R`, `.pdf` and `.Rmd`. Our entire workflow can be run and the 
+results replicated from either of these files. The user must run the code from the 
+same folder where the files in the generated data section are stored for a successful 
+compilation.
