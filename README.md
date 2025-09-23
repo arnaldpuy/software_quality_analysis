@@ -9,19 +9,19 @@ maintainability and cognitive load. The goal is to appraise the risk of bugs and
 introducing undesired behaviours in future model updates. The models are the following:
 
 * [CTSM](https://github.com/ESCOMP/CTSM)  - Community Terrestrial Systems Model.    
-* CWatM - Community Water Model.      
-* DBH - Distributed Biosphere-Hydrological Model.
-* GR4J - Génie Rural à 4 paramètres Journalier.       
-* H08 - H08 Global Hydrological Model.
-* HBV - Hydrologiska Byråns Vattenbalansavdelning model.      
+* [CWatM](https://github.com/iiasa/CWatM) - Community Water Model.      
+* [DBH](https://hydro.iis.u-tokyo.ac.jp/DBH/index_files/Page394.htm) - Distributed Biosphere-Hydrological Model.
+* [GR4J](https://github.com/EdgarEspitia/GR4J) - Génie Rural à 4 paramètres Journalier.       
+* [H08](https://github.com/h08model/H08) - H08 Global Hydrological Model.
+* [HBV](https://github.com/johnrobertcraven/hbv_hydromodel) - Hydrologiska Byråns Vattenbalansavdelning model.      
 * HydroPy - (Hydrological model implemented in Python) 
-* HYPE - Hydrological Predictions for the Environment.
-* MHM - Mesoscale Hydrologic Model.       
-* ORCHIDEE - Organising Carbon and Hydrology In Dynamic Ecosystems. 
-* PCR-GLOBWB - PCRaster Global Water Balance model.
-* SACRAMENTO - Sacramento Soil Moisture Accounting Model.
-* SWAT - Soil and Water Assessment Tool.  
-* VIC - Variable Infiltration Capacity model.
+* [HYPE](https://sourceforge.net/projects/hype/files/) - Hydrological Predictions for the Environment.
+* [MHM](https://zenodo.org/records/8279545) - Mesoscale Hydrologic Model.       
+* [ORCHIDEE](https://forge.ipsl.jussieu.fr/orchidee/browser/branches/ORCHIDEE-MICT/tags/ORCHIDEE_MICT_8.4.1) - Organising Carbon and Hydrology In Dynamic Ecosystems. 
+* [PCR-GLOBWB](https://github.com/UU-Hydro/PCR-GLOBWB_model) - PCRaster Global Water Balance model.
+* [SACRAMENTO](https://github.com/NOAA-OWP/sac-sma) - Sacramento Soil Moisture Accounting Model.
+* [SWAT](https://swatplus.gitbook.io/docs/source-code) - Soil and Water Assessment Tool.  
+* [VIC](https://github.com/UW-Hydro/VIC) - Variable Infiltration Capacity model.
 
 ### Code
 
