@@ -8,7 +8,7 @@ Fortran, four in Python and five including both languages) to get an insight int
 maintainability and cognitive load. The goal is to appraise the risk of bugs and of 
 introducing undesired behaviours in future model updates. The models are the following:
 
-* CTSM - Community Terrestrial Systems Model.    
+* [CTSM](https://github.com/ESCOMP/CTSM)  - Community Terrestrial Systems Model.    
 * CWatM - Community Water Model.      
 * DBH - Distributed Biosphere-Hydrological Model.
 * GR4J - Génie Rural à 4 paramètres Journalier.       
