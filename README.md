@@ -28,8 +28,11 @@ introducing undesired behaviours in future model updates. The models are the fol
 The "dataset" folder contains the data produced in this study. 
 
 * `results_sqa.xlsx`: It contains three tabs:
+
 ** `descriptive_stats`:
+
 ** `maintainability_index`:
+
 ** `score`:
 
 ### Code
