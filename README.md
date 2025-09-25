@@ -23,9 +23,19 @@ introducing undesired behaviours in future model updates. The models are the fol
 * [SWAT](https://swatplus.gitbook.io/docs/source-code) - Soil and Water Assessment Tool.  
 * [VIC](https://github.com/UW-Hydro/VIC) - Variable Infiltration Capacity model.
 
+### Data
+
+The "dataset" folder contains the data produced in this study. 
+
+* `results_sqa.xlsx`: It contains three tabs:
+** `descriptive_stats`:
+** `maintainability_index`:
+** `score`:
+
 ### Code
 
 We offer the code in `.R`, `.pdf` and `.Rmd`. Our entire workflow can be run and the 
 results replicated from either of these files. The user must run the code from the 
 same folder where the files in the generated data section are stored for a successful 
 compilation.
+
