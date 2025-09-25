@@ -3,9 +3,9 @@
 
 [Arnald Puy](https://www.arnaldpuy.com/) et al.
 
-This study conducts a static analysis of the code of fourteen global hydrological models (five written in
-Fortran, four in Python and five including both languages) to get an insight into their complexity,
-maintainability and cognitive load. The goal is to appraise the risk of bugs and of 
+This repository contains the results of a static analysis of the code of fourteen global hydrological models (five written in
+Fortran, four in Python and five including both languages) to provide insight into their complexity,
+maintainability and cognitive load. The goal is to appraise the risk of bugs and the likelihood of 
 introducing undesired behaviours in future model updates. The models are the following:
 
 * [CTSM](https://github.com/ESCOMP/CTSM)  - Community Terrestrial Systems Model.    
@@ -28,6 +28,7 @@ introducing undesired behaviours in future model updates. The models are the fol
 The "dataset" folder contains the data produced in this study. 
 
 * `results_sqa.xlsx`: Data at the model level. It contains three tabs:
+
   - `descriptive_stats`: Number of files, functions, modules, total number of lines, 
  lines of code, lines of comments, lines of code per function.
   - `maintainability_index`: Maintainability index weighted by lines of code ($M_{\text{loc}}$)
