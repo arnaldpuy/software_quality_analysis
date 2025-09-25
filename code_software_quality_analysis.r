@@ -7,7 +7,7 @@ knitr::opts_chunk$set(echo = TRUE, dev = "pdf", cache = TRUE)
 #   PRELIMINARY FUNCTIONS ######################################################
 
 sensobol::load_packages(c("data.table", "tidyverse", "openxlsx", "scales", 
-                          "cowplot"))
+                          "cowplot", "readxl", "tidytext"))
 
 # Create custom theme -----------------------------------------------------------
 
@@ -38,23 +38,30 @@ theme_AP <- function() {
 
 # Select color palette ----------------------------------------------------------
 
-selected.palette <- "Darjeeling1"
+color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
 
 
 ## ----dataset-----------------------------------------------------------------------------------------------
 
 # READ IN DATASET ##############################################################
 
-dt <- data.table(read.xlsx("./datasets/results_sqa.xlsx"))
-cols <- colnames(dt)
-color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
+# Get name of sheets -----------------------------------------------------------
 
+sheets <- excel_sheets("./datasets/results_sqa.xlsx")
+
+# Read all sheets --------------------------------------------------------------
+
+dt <- lapply(sheets, function(x) data.table(read_excel("./datasets/results_sqa.xlsx", 
+                                                       sheet = x)))
+names(dt) <- sheets
+
+# DESCRIPTIVE STATS SHEET ######################################################
 
 ## ----plot_lines_code, dependson="dataset", fig.height=1.5, fig.width=1.8-----------------------------------
 
 # PLOT LINES OF CODE ###########################################################
 
-plot_lines_code <- dt[, .(total_lines_code = sum(lines_code)), model] %>%
+plot_lines_code <- dt$descriptive_stats[, .(total_lines_code = sum(lines_code)), model] %>%
   ggplot(., aes(total_lines_code)) +
   geom_histogram() +
   labs(x = "Lines of code", y = "Nº models") +
@@ -67,7 +74,7 @@ plot_lines_code
 
 # PLOT COMMENT DENSITY #########################################################
 
-plot_comment_density <- dt[, .(total_lines_code = sum(lines_code), 
+plot_comment_density <- dt$descriptive_stats[, .(total_lines_code = sum(lines_code), 
        total_lines_comments = sum(lines_comments)), .(model, language)] %>%
   .[, comment_density:= total_lines_comments / total_lines_code] %>%
   ggplot(., aes(comment_density, fill = language)) + 
@@ -89,30 +96,65 @@ plot_comment_density
 plot_grid(plot_lines_code, plot_comment_density + labs(x = "Comment density", y  = ""), 
           labels = "auto", rel_widths = c(0.4, 0.6))
 
-model_ordered <- dt[, sum(lines), model] %>%
+model_ordered <- dt$descriptive_stats[, sum(lines), model] %>%
   .[order(V1)] %>%
   .[, model]
 
-col_names <- colnames(dt)
+col_names <- colnames(dt$descriptive_stats)
+
 facet_order <- c("lines", "lines_code", "lines_comments", "functions", 
-                 "lines_code_per_function", "files", "modules")
-melt(dt, measure.vars = col_names[-c(1, length(col_names))]) %>%
-  ggplot(., aes(model, value), fill = language) +
-  geom_bar(stat = "identity") + 
-  coord_flip() +  
-  scale_y_continuous(breaks = breaks_pretty(n = 2)) +
-  facet_wrap(~variable, ncol = 7, scale = "free_x") + 
-  theme_AP() + 
-  theme(legend.position = "top")
+                 "lines_function", "files", "modules")
 
-
-melt(dt, measure.vars = col_names[-c(1, length(col_names))]) %>%
+melt(dt$descriptive_stats, measure.vars = col_names[-c(1, length(col_names))]) %>%
+  .[, variable:= factor(variable, levels = facet_order)] %>%
+  .[, model:= factor(model, levels = model_ordered)] %>%
+  .[!variable == "lines"] %>%
   ggplot(., aes(model, value, fill = language)) +
   geom_col() +
   coord_flip() +
   scale_y_continuous(breaks = breaks_pretty(n = 2)) +
+  scale_fill_manual(values = color_languages) +
   facet_wrap(~ variable, ncol = 7, scales = "free_x") +
   labs(x = "", y = "N") +
   theme_AP() +
-  theme(legend.position = "top")
+  theme(legend.position = "none")
+
+
+
+
+library(ggrepel)
+dt$maintainability_index %>%
+  ggplot(aes(M_loc, M_average, color = language, label = model)) +
+  geom_point(size = 1.75) +
+  geom_text_repel(aes(label = model), size = 2) +
+  scale_color_manual(values = color_languages) +
+  scale_x_continuous(breaks = breaks_pretty(n = 3)) +
+  scale_y_continuous(breaks = breaks_pretty(n = 3)) +
+  facet_wrap(~type) +
+  theme_AP() + 
+  theme(legend.position = "none")
+
+dt$score %>%
+  ggplot(., aes(reorder(model, score), score, fill = language)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~language, scales = "free_y") +
+  scale_fill_manual(values = color_languages) +
+  labs(x = "", y = "Score") +
+  coord_flip() +
+  theme_AP() + 
+  theme(legend.position = "none")
+
+
+
+dt$score %>%
+  ggplot(aes(x = reorder_within(model, score, language), y = score, fill = language)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ language, scales = "free_y") +
+  labs(x = "", y = "Score") +
+  scale_fill_manual(values = color_languages) +
+  scale_x_reordered() +   # important: cleans up the labels
+  coord_flip() +
+  scale_y_continuous(limits = c(0, 10)) +
+  theme_AP() + 
+  theme(legend.position = "none")
 

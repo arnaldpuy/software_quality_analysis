@@ -1,5 +1,5 @@
 ---
-title: "Software quality analysis of fourteen hydrological model"
+title: "Software quality analysis of fourteen hydrological models"
 author: "Arnald Puy"
 header-includes:
   - \usepackage[font=footnotesize]{caption}
@@ -41,7 +41,7 @@ knitr::opts_chunk$set(echo = TRUE, dev = "pdf", cache = TRUE)
 #   PRELIMINARY FUNCTIONS ######################################################
 
 sensobol::load_packages(c("data.table", "tidyverse", "openxlsx", "scales", 
-                          "cowplot"))
+                          "cowplot", "readxl", "ggrepel", "tidytext"))
 
 # Create custom theme -----------------------------------------------------------
 
@@ -49,10 +49,8 @@ theme_AP <- function() {
   theme_bw() +
     theme(panel.grid.major = element_blank(),
           panel.grid.minor = element_blank(),
-          legend.background = element_rect(fill = "transparent",
-                                           color = NA),
-          legend.key = element_rect(fill = "transparent",
-                                    color = NA), 
+          legend.background = element_rect(fill = "transparent", color = NA),
+          legend.key = element_rect(fill = "transparent", color = NA), 
           strip.background = element_rect(fill = "white"), 
           legend.text = element_text(size = 7.3), 
           axis.title = element_text(size = 10),
@@ -72,25 +70,36 @@ theme_AP <- function() {
 
 # Select color palette ----------------------------------------------------------
 
-selected.palette <- "Darjeeling1"
+color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
 ```
 
-# Dataset
+# Results
 
 ```{r dataset}
 
-# READ IN DATASET #############################################################
+# READ IN DATASET ##############################################################
 
-dt <- data.table(read.xlsx("./datasets/results_sqa.xlsx"))
-cols <- colnames(dt)
-color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
+# Get name of sheets -----------------------------------------------------------
+
+sheets <- excel_sheets("./datasets/results_sqa.xlsx")
+
+# Read all sheets --------------------------------------------------------------
+
+dt <- lapply(sheets, function(x) data.table(read_excel("./datasets/results_sqa.xlsx", 
+                                                       sheet = x)))
+
+# Name the slots ---------------------------------------------------------------
+
+names(dt) <- sheets
 ```
+
+## Descriptive statistics
 
 ```{r plot_lines_code, dependson="dataset", fig.height=1.5, fig.width=1.8}
 
 # PLOT LINES OF CODE ###########################################################
 
-plot_lines_code <- dt[, .(total_lines_code = sum(lines_code)), model] %>%
+plot_lines_code <- dt$descriptive_stats[, .(total_lines_code = sum(lines_code)), model] %>%
   ggplot(., aes(total_lines_code)) +
   geom_histogram() +
   labs(x = "Lines of code", y = "Nº models") +
@@ -103,7 +112,7 @@ plot_lines_code
 
 # PLOT COMMENT DENSITY #########################################################
 
-plot_comment_density <- dt[, .(total_lines_code = sum(lines_code), 
+plot_comment_density <- dt$descriptive_stats[, .(total_lines_code = sum(lines_code), 
        total_lines_comments = sum(lines_comments)), .(model, language)] %>%
   .[, comment_density:= total_lines_comments / total_lines_code] %>%
   ggplot(., aes(comment_density, fill = language)) + 
@@ -120,18 +129,32 @@ plot_comment_density
 
 ```{r plot_other_stats, dependson="dataset", fig.height=2.8, fig.width=6}
 
-model_ordered <- dt[, sum(lines), model] %>%
-  .[order(V1)] %>%
-  .[, model]
+# PLOT PER MODEL ###############################################################
 
-col_names <- colnames(dt)
+# Sort by model ----------------------------------------------------------------
+
+model_ordered <- dt$descriptive_stats[, sum(lines), model] %>%
+  .[order(V1)] 
+
+# Print ------------------------------------------------------------------------
+
+model_ordered
+
+# Extract column names ---------------------------------------------------------
+
+col_names <- colnames(dt$descriptive_stats)
+
+# Order facets -----------------------------------------------------------------
 
 facet_order <- c("lines", "lines_code", "lines_comments", "functions", 
                  "lines_function", "files", "modules")
 
-plot_per_model <- melt(dt, measure.vars = col_names[-c(1, length(col_names))]) %>%
+
+# Plot -------------------------------------------------------------------------
+
+plot_per_model <- melt(dt$descriptive_stats, measure.vars = col_names[-c(1, length(col_names))]) %>%
   .[, variable:= factor(variable, levels = facet_order)] %>%
-  .[, model:= factor(model, levels = model_ordered)] %>%
+  .[, model:= factor(model, levels = model_ordered[, model])] %>%
   .[!variable == "lines"] %>%
   ggplot(., aes(model, value, fill = language)) +
   geom_col() +
@@ -152,5 +175,60 @@ plot_per_model
 
 top <- plot_grid(plot_lines_code, plot_comment_density + labs(x = "Comment density", y  = ""), 
           labels = "auto", rel_widths = c(0.4, 0.6))
-plot_grid(top, plot_per_model, ncol = 1, labels = c("", "c"), rel_heights = c(0.4, 0.6))
+
+p1 <- plot_grid(top, plot_per_model, ncol = 1, labels = c("", "c"), rel_heights = c(0.4, 0.6))
+
+p1
+```
+
+## Maintainability index
+
+```{r maintainability_index, dependson="dataset", fig.height=2.5, fig.width=4}
+
+# PLOT MAINTAINABILITY INDEX ###################################################
+
+plot_maintainability_index <- dt$maintainability_index %>%
+  ggplot(aes(M_loc, M_average, color = language, label = model)) +
+  geom_point(size = 1.2) +
+  geom_text_repel(aes(label = model), size = 1.5) +
+  scale_color_manual(values = color_languages) +
+  scale_x_continuous(breaks = breaks_pretty(n = 3)) +
+  scale_y_continuous(breaks = breaks_pretty(n = 3)) +
+  facet_wrap(~type) +
+  labs(x = expression(M[LOC]), y = expression(M[average])) +
+  theme_AP() + 
+  theme(legend.position = "none")
+
+plot_maintainability_index
+```
+
+## Score
+
+```{r score, dependson="dataset", fig.height=2, fig.width=3.5}
+
+# PLOT SCORE ###################################################################
+
+plot_score <- dt$score %>%
+  ggplot(aes(x = reorder_within(model, score, language), y = score, fill = language)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ language, scales = "free_y") +
+  labs(x = "", y = "Score") +
+  scale_fill_manual(values = color_languages) +
+  geom_hline(yintercept = 5, lty = 2) +
+  scale_x_reordered() +   
+  scale_y_continuous(limits = c(0, 10), breaks = c(0, 5, 10)) +
+  coord_flip() +
+  theme_AP() + 
+  theme(legend.position = "none")
+
+plot_score
+```
+
+```{r merge_maintainability_score, dependson=c("score", "maintainability_index"), fig.width=6, fig.height=5}
+
+# MERGE PLOTS ##################################################################
+
+bottom <- plot_grid(plot_maintainability_index, plot_score, ncol = 2, labels = c("d", "e"))
+
+plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.65, 0.35))
 ```
