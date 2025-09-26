@@ -77,7 +77,7 @@ color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
 
 ```{r dataset}
 
-# READ IN DATASET ##############################################################
+# READ IN DATASET #############################################################
 
 # Get name of sheets -----------------------------------------------------------
 
@@ -187,17 +187,25 @@ p1
 
 # PLOT MAINTAINABILITY INDEX ###################################################
 
-plot_maintainability_index <- dt$maintainability_index %>%
-  ggplot(aes(M_loc, M_average, color = language, label = model)) +
-  geom_point(size = 1.2) +
-  geom_text_repel(aes(label = model), size = 1.5) +
-  scale_color_manual(values = color_languages) +
-  scale_x_continuous(breaks = breaks_pretty(n = 3)) +
-  scale_y_continuous(breaks = breaks_pretty(n = 3)) +
-  facet_wrap(~type) +
-  labs(x = expression(M[LOC]), y = expression(M[average])) +
-  theme_AP() + 
-  theme(legend.position = "none")
+plot_maintainability_index <- dt$maintainability_index %>% 
+  melt(., measure.vars = c("M_loc", "M_average")) %>%
+  .[, variable:= factor(variable, levels = c("M_average", "M_loc"))] %>%
+  ggplot(., aes(model, value, color = language, shape = type)) +
+  geom_point() +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 65,
+           fill = "red", alpha = 0.18) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 65, ymax = 85,
+           fill = "orange", alpha = 0.1) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 85, ymax = Inf,
+           fill = "green", alpha = 0.1) +
+  facet_wrap(~variable, labeller = as_labeller(c(M_loc = "M[LOC]", 
+                                               M_average = "M[average]"),
+                                             default = label_parsed)) +
+  labs(x = "", y = "Value") +
+  scale_color_manual(values = color_languages, guide = "none") +
+  theme_AP() +
+  theme(legend.position = "none") +
+  coord_flip()
 
 plot_maintainability_index
 ```
@@ -230,5 +238,5 @@ plot_score
 
 bottom <- plot_grid(plot_maintainability_index, plot_score, ncol = 2, labels = c("d", "e"))
 
-plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.65, 0.35))
+plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.62, 0.38))
 ```

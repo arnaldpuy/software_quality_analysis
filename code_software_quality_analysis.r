@@ -123,7 +123,29 @@ melt(dt$descriptive_stats, measure.vars = col_names[-c(1, length(col_names))]) %
 
 
 library(ggrepel)
-dt$maintainability_index %>%
+dt$maintainability_index %>% 
+  melt(., measure.vars = c("M_loc", "M_average")) %>%
+  ggplot(., aes(model, value, color = language, shape = type)) +
+  geom_point() +
+  facet_wrap(~variable,
+             labeller = as_labeller(c("M_loc" = expression(M[LOC]),
+                                      "M_average" = expression(M[average])))) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 65,
+           fill = "red", alpha = 0.18) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 65, ymax = 85,
+           fill = "orange", alpha = 0.1) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 85, ymax = Inf,
+           fill = "green", alpha = 0.1) +
+  labs(x = "", y = "Value") +
+  scale_color_manual(values = color_languages, guide = "none") +
+  theme_AP() +
+  coord_flip()
+  
+  
+  
+  
+  
+  
   ggplot(aes(M_loc, M_average, color = language, label = model)) +
   geom_point(size = 1.75) +
   geom_text_repel(aes(label = model), size = 2) +
