@@ -31,9 +31,11 @@ The "dataset" folder contains the data produced in this study.
 
   - `descriptive_stats`: Number of files, functions, modules, total number of lines, 
  lines of code, lines of comments, lines of code per function.
+ 
   - `maintainability_index`: Maintainability index weighted by lines of code ($M_{\text{LOC}}$)
  and average maintainability index ($M_{\text{average}}$), both in their classic and expanded versions 
  (see manuscript for more details).
+ 
   - `score`: final score of the model. See manuscript for more details.
 
 ### Code
