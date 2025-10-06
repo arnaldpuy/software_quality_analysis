@@ -1,10 +1,10 @@
-## ----setup, include=FALSE------------------------------------------------------------
+## ----setup, include=FALSE-----------------------------------
 knitr::opts_chunk$set(echo = TRUE, dev = "pdf", cache = TRUE)
 
 
-## ----warning=FALSE, message=FALSE----------------------------------------------------
+## ----warning=FALSE, message=FALSE---------------------------
 
-#   PRELIMINARY FUNCTIONS #####################################################
+#   PRELIMINARY FUNCTIONS ####################################################
 
 sensobol::load_packages(c("data.table", "tidyverse", "openxlsx", "scales", 
                           "cowplot", "readxl", "ggrepel", "tidytext", "here"))
@@ -46,9 +46,9 @@ r_functions <- list.files(path = here("functions"),
 lapply(r_functions, source)
 
 
-## ----dataset-------------------------------------------------------------------------
+## ----dataset------------------------------------------------
 
-# READ IN DATASET #############################################################
+# READ IN DATASET ############################################################
 
 # Get name of sheets -----------------------------------------------------------
 
@@ -64,7 +64,7 @@ dt <- lapply(sheets, function(x) data.table(read_excel("./datasets/results_sqa.x
 names(dt) <- sheets
 
 
-## ----plot_lines_code, dependson="dataset", fig.height=1.5, fig.width=1.8-------------
+## ----plot_lines_code, dependson="dataset", fig.height=1.5, fig.width=1.8----
 
 # PLOT LINES OF CODE ###########################################################
 
@@ -77,7 +77,7 @@ plot_lines_code <- dt$descriptive_stats[, .(total_lines_code = sum(lines_code)),
 plot_lines_code
 
 
-## ----plot_comment_density, dependson="dataset", fig.height=1.5, fig.width=3----------
+## ----plot_comment_density, dependson="dataset", fig.height=1.5, fig.width=3----
 
 # PLOT COMMENT DENSITY #########################################################
 
@@ -96,7 +96,7 @@ plot_comment_density <- dt$descriptive_stats[, .(total_lines_code = sum(lines_co
 plot_comment_density
 
 
-## ----plot_other_stats, dependson="dataset", fig.height=2.8, fig.width=6--------------
+## ----plot_other_stats, dependson="dataset", fig.height=2.8, fig.width=6----
 
 # PLOT PER MODEL ###############################################################
 
@@ -150,7 +150,7 @@ p1 <- plot_grid(top, plot_per_model, ncol = 1, labels = c("", "c"), rel_heights 
 p1
 
 
-## ----maintainability_index_interpretation, dependson="dataset"-----------------------
+## ----maintainability_index_interpretation, dependson="dataset"----
 
 # CALCULATE INTERPRETATIBILITY OF MAINTAINABILITY INDEX 3#######################
 
@@ -173,7 +173,7 @@ dt$maintainability_index %>%
   print()
 
 
-## ----maintainability_index, dependson="dataset", fig.height=2.5, fig.width=4---------
+## ----maintainability_index, dependson="dataset", fig.height=2.5, fig.width=4----
 
 # PLOT MAINTAINABILITY INDEX ###################################################
 
@@ -200,7 +200,7 @@ plot_maintainability_index <- dt$maintainability_index %>%
 plot_maintainability_index
 
 
-## ----score, dependson="dataset", fig.height=2, fig.width=3.5-------------------------
+## ----score, dependson="dataset", fig.height=2, fig.width=3.5----
 
 # PLOT SCORE ###################################################################
 
@@ -229,7 +229,7 @@ bottom <- plot_grid(plot_maintainability_index, plot_score, ncol = 2, labels = c
 plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.62, 0.38))
 
 
-## ----read_metrics_function_data------------------------------------------------------
+## ----read_metrics_function_data-----------------------------
 
 # METRICS AT THE FILE AND FUNCTION LEVEL #######################################
 
@@ -348,22 +348,7 @@ metrics_combined[grep("^func_", names(metrics_combined))] %>%
   theme_AP()
 
 
-## ----plot_scatter_and_bar, dependson="read_metrics_function_data", fig.height=2.5, fig.width=3----
-
-# Scatterplot cyclomatic vs lines of code --------------------------------------
-
-plot_c_vs_loc <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
-  lapply(., function(x) x[, .(loc, cyclomatic_complexity, language)]) %>%
-  rbindlist() %>%
-  ggplot(., aes(loc, cyclomatic_complexity, color = language)) +
-  geom_point(alpha = 0.5, size = 0.7) +
-  scale_x_continuous(breaks = breaks_pretty(n = 3)) +
-  labs(x = "Lines of code", y = "C") +
-  scale_color_manual(values = color_languages) +
-  theme_AP() + 
-  theme(legend.position = "none")
-
-plot_c_vs_loc
+## ----plot_scatterplot, dependson="read_metrics_function_data", fig.height=1.7, fig.width=2.5----
 
 plot_scatterplot <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   lapply(., function(x) 
@@ -381,6 +366,9 @@ plot_scatterplot <- metrics_combined[grep("^func_", names(metrics_combined))] %>
 
 plot_scatterplot
 
+
+## ----plot_c_model, dependson="read_metrics_function_data", fig.height=2.2, fig.width=3.1----
+
 plot_c_model <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   lapply(., function(x) 
     x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
@@ -388,6 +376,7 @@ plot_c_model <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   ggplot(., aes(model, cyclomatic_complexity, fill = language, color = language)) +
   geom_boxplot(outlier.size = 1) +
   coord_flip() +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 2)) +
   facet_wrap(~language) +
   labs(x = "", y = "C") +
   theme_AP() +
@@ -395,6 +384,24 @@ plot_c_model <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   theme(legend.position = "none")
 
 plot_c_model
+
+
+## ----plot_scatter_and_bar, dependson="read_metrics_function_data", fig.height=2.5, fig.width=3----
+
+# Scatterplot cyclomatic vs lines of code --------------------------------------
+
+plot_c_vs_loc <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) x[, .(loc, cyclomatic_complexity, language)]) %>%
+  rbindlist() %>%
+  ggplot(., aes(loc, cyclomatic_complexity, color = language)) +
+  geom_point(alpha = 0.5, size = 0.7) +
+  scale_x_continuous(breaks = breaks_pretty(n = 3)) +
+  labs(x = "Lines of code", y = "C") +
+  scale_color_manual(values = color_languages) +
+  theme_AP() + 
+  theme(legend.position = "none")
+
+plot_c_vs_loc
 
 # Count & proportion -----------------------------------------------------------
 
@@ -418,43 +425,17 @@ plot_bar_cyclomatic
 
 ## ----merge_scatter, dependson="plot_scatter_and_bar", fig.height=1.8, fig.width=4----
 
-# MERGE #########################################################################
+# MERGE ########################################################################
 
-da <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 2, labels = "auto", 
+
+ plot_cyclomatic <- plot_grid(plot_c_vs_loc, plot_bar_cyclomatic, ncol = 2, labels = "auto", 
           rel_widths = c(0.45, 0.55))
-
-plot_grid(p1, da, ncol = 1, rel_heights = c(0.7, 0.3))
-
-
-di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = "auto")
-
-bottom <- plot_grid(di, plot_c_model, ncol = 2)
-plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.6, 0.4))
+ 
+plot_cyclomatic
 
 
 
-
-metrics_combined[grep("^func_", names(metrics_combined))] %>%
-  lapply(., function(x) 
-    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
-  rbindlist() %>%
-  .[order(-cyclomatic_complexity), .SD[1:10], language] %>%
-  ggplot(., aes(x = reorder_within(`function`, cyclomatic_complexity, language), 
-                y = cyclomatic_complexity, fill = language)) +
-  facet_wrap(~language, scales = "free") +
-  scale_fill_manual(values = color_languages) +
-  coord_flip() +
-  scale_x_reordered() +
-  geom_bar(stat = "identity") +
-  theme_AP() +
-  theme(legend.position = "none")
-
-
-
-
-
-
-plot_scatterplot
+## ----plot_c_fraction, fig.height=2, fig.width=2.3-----------
 
 plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   lapply(., function(x) 
@@ -464,60 +445,29 @@ plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %
   .[, proportion := N / sum(N), .(language, model)] %>%
   ggplot(., aes(model, proportion, fill = complexity_category)) +
   geom_bar(stat = "identity") +
-  scale_fill_manual(values = c("yellowgreen", "orange", "red", "purple")) +
+  scale_fill_manual(values = c("yellowgreen", "orange", "red", "purple"), 
+                    labels = lab_expr, 
+                    name = "") +
   facet_wrap(~language) + 
   labs(x = "", y = "Proportion") +
   coord_flip() +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
   theme_AP() + 
-  theme(legend.position = "none")
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_blank(), 
+        legend.text = element_text(size = 7))
 
+plot_bar_category
+
+
+## ----merge_5, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=7.2, fig.width=6----
+
+di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = c("d", "e"))
 legend <- get_legend_fun(plot_bar_category + theme(legend.position = "top"))
-  
-a <- plot_grid(plot_scatterplot, plot_bar_category, ncol = 2, labels = "auto", 
-               rel_widths = c(0.45, 0.55))
-plot_grid(legend, a, ncol = 1, rel_heights = c(0.05, 0.95))
-
-
-metrics_combined[grep("^func_", names(metrics_combined))] %>%
-  lapply(., function(x) 
-    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
-  rbindlist() %>%
-  ggplot(., aes(cyclomatic_complexity, bugs, color = language)) +
-  geom_point(size = 0.2) +
-  scale_color_manual(values = color_languages) +
-  facet_wrap(~model, ncol = 5) + 
-  scale_x_log10() +
-  theme_AP()
-
-
-
-
-
-
-
-metrics <- c("cyclomatic_complexity", "loc", "bugs", "time")
-
-
-DT <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
-  lapply(., function(x) 
-    x[, .(model, `function`, cyclomatic_complexity, loc, bugs, language, time)]) %>%
-  rbindlist() %>%
-  na.omit() %>%
-  .[language == "fortran"]
-
-# Aggregate per model (using means; adjust if you prefer medians or max)
-model_summary <- DT[, lapply(.SD, mean, na.rm = TRUE), 
-                    by = .(model, language), .SDcols = metrics]
-
-
-X <- as.data.frame(model_summary[, ..metrics])
-rownames(X) <- model_summary$model
-X_scaled <- scale(X)
-
-d <- dist(X_scaled, method = "euclidean")     # distance between models
-hc <- hclust(d, method = "ward.D2")           # clustering method
-
-plot(hc, hang = -1, main = "Hierarchical clustering of models",
-     xlab = "Hydrological Models", ylab = "Dissimilarity")
-
+dada <- plot_grid(plot_c_model, plot_bar_category, ncol = 2, rel_widths = c(0.61, 0.39))
+dada2 <- plot_grid(legend, dada, ncol = 1, rel_heights = c(0.1, 0.9), labels = "f")
+dada3 <- plot_grid(di, dada2, ncol = 2, rel_widths = c(0.4, 0.6))
+dada4 <- plot_grid(plot_maintainability_index, plot_score, ncol = 2, labels = c("g", "h"))
+dada5 <- plot_grid(p1, dada3, ncol = 1, rel_heights = c(0.6, 0.4))
+plot_grid(dada5, dada4, rel_heights = c(0.73, 0.27), ncol = 1)
 

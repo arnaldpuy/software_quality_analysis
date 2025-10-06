@@ -472,8 +472,7 @@ plot_bar_cyclomatic
 
 ```{r merge_scatter, dependson="plot_scatter_and_bar", fig.height=1.8, fig.width=4}
 
-# MERGE #########################################################################
-
+# MERGE ########################################################################
 
 
  plot_cyclomatic <- plot_grid(plot_c_vs_loc, plot_bar_cyclomatic, ncol = 2, labels = "auto", 
@@ -483,7 +482,7 @@ plot_cyclomatic
 
 ```
 
-```{r plot_c_fraction, fig.height=2, fig.width=3.5}
+```{r plot_c_fraction, fig.height=2, fig.width=2.3}
 
 plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   lapply(., function(x) 
@@ -508,24 +507,6 @@ plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %
 plot_bar_category
 ```
 
-
-```{r merge_3, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=5.4, fig.width=6}
-
-di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = "auto")
-
-bottom <- plot_grid(di, plot_c_model, plot_bar_category, ncol = 3, rel_widths = c(0.32, 0.4, 0.28))
-plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.6, 0.4))
-```
-
-```{r merge_4, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=5.6, fig.width=6}
-
-di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = c("d", "e"))
-legend <- get_legend_fun(plot_bar_category + theme(legend.position = "top"))
-dada <- plot_grid(plot_c_model, plot_bar_category, ncol = 2, rel_widths = c(0.61, 0.39))
-dada2 <- plot_grid(legend, dada, ncol = 1, rel_heights = c(0.1, 0.9), labels = "f")
-dada3 <- plot_grid(di, dada2, ncol = 2, rel_widths = c(0.4, 0.6))
-plot_grid(p1, dada3, ncol = 1, rel_heights = c(0.6, 0.4))
-```
 
 ```{r merge_5, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=7.2, fig.width=6}
 
