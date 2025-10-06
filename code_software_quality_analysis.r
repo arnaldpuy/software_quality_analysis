@@ -7,7 +7,7 @@ knitr::opts_chunk$set(echo = TRUE, dev = "pdf", cache = TRUE)
 #   PRELIMINARY FUNCTIONS #####################################################
 
 sensobol::load_packages(c("data.table", "tidyverse", "openxlsx", "scales", 
-                          "cowplot", "readxl", "ggrepel", "tidytext"))
+                          "cowplot", "readxl", "ggrepel", "tidytext", "here"))
 
 # Create custom theme -----------------------------------------------------------
 
@@ -37,6 +37,13 @@ theme_AP <- function() {
 # Select color palette ----------------------------------------------------------
 
 color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
+
+# Source all .R files in the "functions" folder --------------------------------
+
+r_functions <- list.files(path = here("functions"), 
+                          pattern = "\\.R$", full.names = TRUE)
+
+lapply(r_functions, source)
 
 
 ## ----dataset-------------------------------------------------------------------------
@@ -358,6 +365,37 @@ plot_c_vs_loc <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
 
 plot_c_vs_loc
 
+plot_scatterplot <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
+  rbindlist() %>%
+  ggplot(., aes(cyclomatic_complexity, loc, color = language)) +
+  geom_point(alpha = 0.2) +
+  scale_color_manual(values = color_languages) +
+  coord_flip() +
+  scale_y_continuous(breaks = pretty_breaks(n = 3)) +
+  facet_wrap(~language) +
+  labs(x = "C", y = "Lines of code") +
+  theme_AP() +
+  theme(legend.position = "none")
+
+plot_scatterplot
+
+plot_c_model <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
+  rbindlist() %>%
+  ggplot(., aes(model, cyclomatic_complexity, fill = language, color = language)) +
+  geom_boxplot(outlier.size = 1) +
+  coord_flip() +
+  facet_wrap(~language) +
+  labs(x = "", y = "C") +
+  theme_AP() +
+  scale_color_manual(values = color_languages) +
+  theme(legend.position = "none")
+
+plot_c_model
+
 # Count & proportion -----------------------------------------------------------
 
 plot_bar_cyclomatic <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
@@ -382,6 +420,104 @@ plot_bar_cyclomatic
 
 # MERGE #########################################################################
 
-plot_grid(plot_c_vs_loc, plot_bar_cyclomatic, ncol = 2, labels = "auto", 
+da <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 2, labels = "auto", 
           rel_widths = c(0.45, 0.55))
+
+plot_grid(p1, da, ncol = 1, rel_heights = c(0.7, 0.3))
+
+
+di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = "auto")
+
+bottom <- plot_grid(di, plot_c_model, ncol = 2)
+plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.6, 0.4))
+
+
+
+
+metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
+  rbindlist() %>%
+  .[order(-cyclomatic_complexity), .SD[1:10], language] %>%
+  ggplot(., aes(x = reorder_within(`function`, cyclomatic_complexity, language), 
+                y = cyclomatic_complexity, fill = language)) +
+  facet_wrap(~language, scales = "free") +
+  scale_fill_manual(values = color_languages) +
+  coord_flip() +
+  scale_x_reordered() +
+  geom_bar(stat = "identity") +
+  theme_AP() +
+  theme(legend.position = "none")
+
+
+
+
+
+
+plot_scatterplot
+
+plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, complexity_category)]) %>%
+  rbindlist() %>%
+  .[, .N, .(model, language, complexity_category)] %>%
+  .[, proportion := N / sum(N), .(language, model)] %>%
+  ggplot(., aes(model, proportion, fill = complexity_category)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("yellowgreen", "orange", "red", "purple")) +
+  facet_wrap(~language) + 
+  labs(x = "", y = "Proportion") +
+  coord_flip() +
+  theme_AP() + 
+  theme(legend.position = "none")
+
+legend <- get_legend_fun(plot_bar_category + theme(legend.position = "top"))
+  
+a <- plot_grid(plot_scatterplot, plot_bar_category, ncol = 2, labels = "auto", 
+               rel_widths = c(0.45, 0.55))
+plot_grid(legend, a, ncol = 1, rel_heights = c(0.05, 0.95))
+
+
+metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
+  rbindlist() %>%
+  ggplot(., aes(cyclomatic_complexity, bugs, color = language)) +
+  geom_point(size = 0.2) +
+  scale_color_manual(values = color_languages) +
+  facet_wrap(~model, ncol = 5) + 
+  scale_x_log10() +
+  theme_AP()
+
+
+
+
+
+
+
+metrics <- c("cyclomatic_complexity", "loc", "bugs", "time")
+
+
+DT <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, `function`, cyclomatic_complexity, loc, bugs, language, time)]) %>%
+  rbindlist() %>%
+  na.omit() %>%
+  .[language == "fortran"]
+
+# Aggregate per model (using means; adjust if you prefer medians or max)
+model_summary <- DT[, lapply(.SD, mean, na.rm = TRUE), 
+                    by = .(model, language), .SDcols = metrics]
+
+
+X <- as.data.frame(model_summary[, ..metrics])
+rownames(X) <- model_summary$model
+X_scaled <- scale(X)
+
+d <- dist(X_scaled, method = "euclidean")     # distance between models
+hc <- hclust(d, method = "ward.D2")           # clustering method
+
+plot(hc, hang = -1, main = "Hierarchical clustering of models",
+     xlab = "Hydrological Models", ylab = "Dissimilarity")
+
 

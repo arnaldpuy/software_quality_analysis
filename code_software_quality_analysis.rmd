@@ -38,10 +38,10 @@ knitr::opts_chunk$set(echo = TRUE, dev = "pdf", cache = TRUE)
 
 ```{r, warning=FALSE, message=FALSE}
 
-#   PRELIMINARY FUNCTIONS #####################################################
+#   PRELIMINARY FUNCTIONS ####################################################
 
 sensobol::load_packages(c("data.table", "tidyverse", "openxlsx", "scales", 
-                          "cowplot", "readxl", "ggrepel", "tidytext"))
+                          "cowplot", "readxl", "ggrepel", "tidytext", "here"))
 
 # Create custom theme -----------------------------------------------------------
 
@@ -71,13 +71,20 @@ theme_AP <- function() {
 # Select color palette ----------------------------------------------------------
 
 color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
+
+# Source all .R files in the "functions" folder --------------------------------
+
+r_functions <- list.files(path = here("functions"), 
+                          pattern = "\\.R$", full.names = TRUE)
+
+lapply(r_functions, source)
 ```
 
 # Results
 
 ```{r dataset}
 
-# READ IN DATASET #############################################################
+# READ IN DATASET ############################################################
 
 # Get name of sheets -----------------------------------------------------------
 
@@ -236,7 +243,6 @@ plot_maintainability_index <- dt$maintainability_index %>%
 plot_maintainability_index
 ```
 
-
 ## Score
 
 ```{r score, dependson="dataset", fig.height=2, fig.width=3.5}
@@ -389,6 +395,44 @@ metrics_combined[grep("^func_", names(metrics_combined))] %>%
   theme_AP()
 ```
 
+```{r plot_scatterplot, dependson="read_metrics_function_data", fig.height=1.7, fig.width=2.5}
+
+plot_scatterplot <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
+  rbindlist() %>%
+  ggplot(., aes(cyclomatic_complexity, loc, color = language)) +
+  geom_point(alpha = 0.2) +
+  scale_color_manual(values = color_languages) +
+  coord_flip() +
+  scale_y_continuous(breaks = pretty_breaks(n = 3)) +
+  facet_wrap(~language) +
+  labs(x = "C", y = "Lines of code") +
+  theme_AP() +
+  theme(legend.position = "none")
+
+plot_scatterplot
+```
+
+```{r plot_c_model, dependson="read_metrics_function_data", fig.height=2.2, fig.width=3.1}
+
+plot_c_model <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
+  rbindlist() %>%
+  ggplot(., aes(model, cyclomatic_complexity, fill = language, color = language)) +
+  geom_boxplot(outlier.size = 1) +
+  coord_flip() +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 2)) +
+  facet_wrap(~language) +
+  labs(x = "", y = "C") +
+  theme_AP() +
+  scale_color_manual(values = color_languages) +
+  theme(legend.position = "none")
+
+plot_c_model
+```
+
 ```{r plot_scatter_and_bar, dependson="read_metrics_function_data", fig.height=2.5, fig.width=3}
 
 # Scatterplot cyclomatic vs lines of code --------------------------------------
@@ -430,6 +474,67 @@ plot_bar_cyclomatic
 
 # MERGE #########################################################################
 
-plot_grid(plot_c_vs_loc, plot_bar_cyclomatic, ncol = 2, labels = "auto", 
+
+
+ plot_cyclomatic <- plot_grid(plot_c_vs_loc, plot_bar_cyclomatic, ncol = 2, labels = "auto", 
           rel_widths = c(0.45, 0.55))
+ 
+plot_cyclomatic
+
+```
+
+```{r plot_c_fraction, fig.height=2, fig.width=3.5}
+
+plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, complexity_category)]) %>%
+  rbindlist() %>%
+  .[, .N, .(model, language, complexity_category)] %>%
+  .[, proportion := N / sum(N), .(language, model)] %>%
+  ggplot(., aes(model, proportion, fill = complexity_category)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("yellowgreen", "orange", "red", "purple"), 
+                    labels = lab_expr, 
+                    name = "") +
+  facet_wrap(~language) + 
+  labs(x = "", y = "Proportion") +
+  coord_flip() +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
+  theme_AP() + 
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_blank(), 
+        legend.text = element_text(size = 7))
+
+plot_bar_category
+```
+
+
+```{r merge_3, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=5.4, fig.width=6}
+
+di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = "auto")
+
+bottom <- plot_grid(di, plot_c_model, plot_bar_category, ncol = 3, rel_widths = c(0.32, 0.4, 0.28))
+plot_grid(p1, bottom, ncol = 1, rel_heights = c(0.6, 0.4))
+```
+
+```{r merge_4, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=5.6, fig.width=6}
+
+di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = c("d", "e"))
+legend <- get_legend_fun(plot_bar_category + theme(legend.position = "top"))
+dada <- plot_grid(plot_c_model, plot_bar_category, ncol = 2, rel_widths = c(0.61, 0.39))
+dada2 <- plot_grid(legend, dada, ncol = 1, rel_heights = c(0.1, 0.9), labels = "f")
+dada3 <- plot_grid(di, dada2, ncol = 2, rel_widths = c(0.4, 0.6))
+plot_grid(p1, dada3, ncol = 1, rel_heights = c(0.6, 0.4))
+```
+
+```{r merge_5, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=7.2, fig.width=6}
+
+di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = c("d", "e"))
+legend <- get_legend_fun(plot_bar_category + theme(legend.position = "top"))
+dada <- plot_grid(plot_c_model, plot_bar_category, ncol = 2, rel_widths = c(0.61, 0.39))
+dada2 <- plot_grid(legend, dada, ncol = 1, rel_heights = c(0.1, 0.9), labels = "f")
+dada3 <- plot_grid(di, dada2, ncol = 2, rel_widths = c(0.4, 0.6))
+dada4 <- plot_grid(plot_maintainability_index, plot_score, ncol = 2, labels = c("g", "h"))
+dada5 <- plot_grid(p1, dada3, ncol = 1, rel_heights = c(0.6, 0.4))
+plot_grid(dada5, dada4, rel_heights = c(0.73, 0.27), ncol = 1)
 ```
