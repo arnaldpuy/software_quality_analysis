@@ -68,7 +68,7 @@ theme_AP <- function() {
           strip.text.y = element_text(size = 7.4)) 
 }
 
-# Select color palette ----------------------------------------------------------
+# Select color palette ---------------------------------------------------------
 
 color_languages <- c("fortran" = "steelblue", "python" = "lightgreen")
 
@@ -84,7 +84,7 @@ lapply(r_functions, source)
 
 ```{r dataset}
 
-# READ IN DATASET ############################################################
+# READ IN DATASET #############################################################
 
 # Get name of sheets -----------------------------------------------------------
 
@@ -363,6 +363,10 @@ lapply(names(metrics_combined), function(nm) {
   out_file <- file.path(outdir, paste0(nm, ".csv"))
   fwrite(metrics_combined[[nm]], out_file)
 })
+
+# Define vector of interest for cyclomatic complexity
+
+vector_cyclomatic <- c("SUBROUTINE", "FUNCTION")
 ```
 
 ```{r plot_cyclomatic_model, dependson="read_metrics_function_data", fig.height=5.5, fig.width=6}
@@ -401,6 +405,7 @@ plot_scatterplot <- metrics_combined[grep("^func_", names(metrics_combined))] %>
   lapply(., function(x) 
     x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
   rbindlist() %>%
+  .[type %in% vector_cyclomatic] %>%
   ggplot(., aes(cyclomatic_complexity, loc, color = language)) +
   geom_point(alpha = 0.2) +
   scale_color_manual(values = color_languages) +
@@ -420,11 +425,12 @@ plot_c_model <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   lapply(., function(x) 
     x[, .(model, language, `function`, cyclomatic_complexity, loc, bugs, type)]) %>%
   rbindlist() %>%
+  .[type %in% vector_cyclomatic] %>%
   ggplot(., aes(model, cyclomatic_complexity, fill = language, color = language)) +
   geom_boxplot(outlier.size = 1) +
   coord_flip() +
   scale_y_continuous(breaks = scales::breaks_pretty(n = 2)) +
-  facet_wrap(~language) +
+  facet_wrap(~language, scales = "free_x") +
   labs(x = "", y = "C") +
   theme_AP() +
   scale_color_manual(values = color_languages) +
@@ -453,8 +459,9 @@ plot_c_vs_loc
 # Count & proportion -----------------------------------------------------------
 
 plot_bar_cyclomatic <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
-  lapply(., function(x) x[, .(complexity_category, language)]) %>%
+  lapply(., function(x) x[, .(complexity_category, language, type)]) %>%
   rbindlist() %>%
+  .[type %in% vector_cyclomatic] %>%
   .[, .N, .(complexity_category, language)] %>%
   .[, proportion := N / sum(N), language] %>%
   ggplot(., aes(complexity_category, proportion, fill = language)) +
@@ -486,8 +493,9 @@ plot_cyclomatic
 
 plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   lapply(., function(x) 
-    x[, .(model, language, complexity_category)]) %>%
+    x[, .(model, language, complexity_category, type)]) %>%
   rbindlist() %>%
+  .[type %in% vector_cyclomatic] %>%
   .[, .N, .(model, language, complexity_category)] %>%
   .[, proportion := N / sum(N), .(language, model)] %>%
   ggplot(., aes(model, proportion, fill = complexity_category)) +
