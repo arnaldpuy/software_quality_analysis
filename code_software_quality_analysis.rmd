@@ -1,5 +1,5 @@
 ---
-title: "Software quality analysis of fourteen hydrological models"
+title: "Mapping the hidden topology of software risk in scientific models"
 author: "Arnald Puy"
 header-includes:
   - \usepackage[font=footnotesize]{caption}
@@ -41,7 +41,9 @@ knitr::opts_chunk$set(echo = TRUE, dev = "pdf", cache = TRUE)
 #   PRELIMINARY FUNCTIONS ####################################################
 
 sensobol::load_packages(c("data.table", "tidyverse", "openxlsx", "scales", 
-                          "cowplot", "readxl", "ggrepel", "tidytext", "here"))
+                          "cowplot", "readxl", "ggrepel", "tidytext", "here", 
+                          "tidygraph", "igraph", "foreach", "parallel", "ggraph", 
+                          "tools", "purrr"))
 
 # Create custom theme -----------------------------------------------------------
 
@@ -84,7 +86,7 @@ lapply(r_functions, source)
 
 ```{r dataset}
 
-# READ IN DATASET #############################################################
+# READ IN DATASET ##############################################################
 
 # Get name of sheets -----------------------------------------------------------
 
@@ -515,7 +517,6 @@ plot_bar_category <- metrics_combined[grep("^func_", names(metrics_combined))] %
 plot_bar_category
 ```
 
-
 ```{r merge_5, dependson=c("plot_c_model", "plot_c_fraction", "merge_plots_lines_comment_density", "merge_scatter"), fig.height=7.2, fig.width=6}
 
 di <- plot_grid(plot_scatterplot, plot_bar_cyclomatic, ncol = 1, labels = c("d", "e"))
@@ -527,3 +528,121 @@ dada4 <- plot_grid(plot_maintainability_index, plot_score, ncol = 2, labels = c(
 dada5 <- plot_grid(p1, dada3, ncol = 1, rel_heights = c(0.6, 0.4))
 plot_grid(dada5, dada4, rel_heights = c(0.73, 0.27), ncol = 1)
 ```
+
+# Risky paths
+
+```{r data_risky_paths}
+# NETWORK CITATION ANALYSIS ----------------------------------------------------
+
+# Path to folder ---------------------------------------------------------------
+
+path <- "./datasets/call_metrics"
+
+# List CSV files ---------------------------------------------------------------
+
+files <- list.files(path, pattern = "\\.csv$", full.names = TRUE)
+
+# Split by language ------------------------------------------------------------
+
+python_files  <- grep("python",  files, value = TRUE, ignore.case = TRUE)
+fortran_files <- grep("fortran", files, value = TRUE, ignore.case = TRUE)
+
+base_fortran <- file_path_sans_ext(basename(fortran_files))
+base_python <- file_path_sans_ext(basename(python_files))
+
+model_names_fortran <- models <- sub(".*_", "", base_fortran)
+model_names_python <- models <- sub(".*_", "", base_python)
+
+# Load and name files ----------------------------------------------------------
+
+python_list  <- lapply(python_files, fread)
+fortran_list <- lapply(fortran_files, fread)
+
+names(python_list) <- model_names_python
+names(fortran_list) <- model_names_fortran
+
+# RBIND ------------------------------------------------------------------------
+
+make_callgraph <- function(lst, lang) {
+  rbindlist(lst, idcol = "model") %>%
+    .[, language := lang] %>%
+    .[, .(model, language, `function`, call)] %>%
+    setnames(., c("function", "call"), c("from", "to"))
+}
+
+python_callgraphs  <- make_callgraph(python_list,  "python") 
+fortran_callgraphs <- make_callgraph(fortran_list, "fortran")
+
+all_callgraphs <- rbind(python_callgraphs, fortran_callgraphs)
+
+# CREATE THE NETWORK ###########################################################
+
+# Define the weights to characterize risky nodes -------------------------------
+
+alpha <- 0.6  # Weight to cyclomatic complexity
+beta  <- 0.3  # Weight to in-degree (impact of bug upstream)
+gamma <- 0.1  # Weight to betweenness (critical bridge)
+
+# Ensure unique names complexity dataset ---------------------------------------
+
+cc_unique <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, complexity_category, type)]) %>%
+  rbindlist() %>%
+  setnames(., "function", "name") %>%
+  arrange(desc(cyclomatic_complexity)) %>%
+  distinct(name, .keep_all = TRUE)
+
+# CREATE NETWORKS FROM CALL GRAPHS #############################################
+
+all_graphs <- all_callgraphs[, .(graph = list(as_tbl_graph(.SD, directed = TRUE))), .(model, language)] %>%
+  .[, graph:= Map(function(g, m, lang) {
+    
+  comp_sub <- cc_unique[model == m & language == lang]
+  
+  g %>%
+    activate(nodes) %>%
+    
+    # Left join with dataset with cyclomatic complexity values -----------------
+  
+  left_join(comp_sub, by = "name") %>%
+    
+    # Remove Python MODULE_AGG / CLASS_AGG nodes from this graph 
+    # because they are not callable --------------------------------------------
+  
+  filter(!(language == "python" & type %in% c("MODULE_AGG", "CLASS_AGG"))) %>%
+    
+    # Calculation of key network metrics ---------------------------------------
+  
+    mutate(indeg = centrality_degree(mode = "in"),
+           outdeg = centrality_degree(mode = "out"),
+           btw = centrality_betweenness(directed = TRUE, weights = NULL),
+           cyclo_scaled = rescale(cyclomatic_complexity),
+           indeg_scaled = rescale(indeg),
+           btw_scaled = rescale(btw),
+           risk_node = alpha * cyclo_scaled + beta * indeg_scaled + gamma * btw_scaled
+    )},
+  
+    graph, model, language
+  )
+]
+
+```
+
+```{r risk_score_paths, dependson="data_risky_paths"}
+
+# COMPUTE ALL PATHS AND THEIR RISK SCORES #####################################
+
+all_graphs <- all_graphs[, paths_tbl:= lapply(graph, all_paths_fun)]
+```
+
+```{r plot_risky_paths, dependson="risk_score_paths", fig.height=3, fig.width=3.5}
+
+# PLOT ALL CALLGRAPHS ##########################################################
+
+all_graphs <- all_graphs[, plot_obj:= mapply(plot_top_risky_paths_fun, call_g = graph, 
+                                             paths_tbl = paths_tbl, model.name = model,
+                                             language = language, SIMPLIFY = FALSE)]
+```
+
+

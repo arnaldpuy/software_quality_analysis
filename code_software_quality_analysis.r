@@ -8,7 +8,8 @@ knitr::opts_chunk$set(echo = TRUE, dev = "pdf", cache = TRUE)
 
 sensobol::load_packages(c("data.table", "tidyverse", "openxlsx", "scales", 
                           "cowplot", "readxl", "ggrepel", "tidytext", "here", 
-                          "tidygraph", "igraph"))
+                          "tidygraph", "igraph", "foreach", "parallel", "ggraph", 
+                          "tools", "purrr"))
 
 # Create custom theme -----------------------------------------------------------
 
@@ -482,11 +483,48 @@ plot_grid(dada5, dada4, rel_heights = c(0.73, 0.27), ncol = 1)
 
 # NETWORK CITATION ANALYSIS ----------------------------------------------------
 
-callgraph_edges <- fread("./datasets/callgraph_edges.csv")
-setnames(callgraph_edges, c("caller", "callee", "lang"), c("from", "to", "language"))
-setcolorder(callgraph_edges, c("from", "to", "model", "language", "caller_line", 
-                               "callee_file_hint", "callee_kind"))
-callgraph_edges[, model:= sub("^\\d+_", "", model)]
+# Path to folder ---------------------------------------------------------------
+
+path <- "./datasets/call_metrics"
+
+# List CSV files ---------------------------------------------------------------
+
+files <- list.files(path, pattern = "\\.csv$", full.names = TRUE)
+
+# Split by language ------------------------------------------------------------
+
+python_files  <- grep("python",  files, value = TRUE, ignore.case = TRUE)
+fortran_files <- grep("fortran", files, value = TRUE, ignore.case = TRUE)
+
+base_fortran <- file_path_sans_ext(basename(fortran_files))
+base_python <- file_path_sans_ext(basename(python_files))
+
+model_names_fortran <- models <- sub(".*_", "", base_fortran)
+model_names_python <- models <- sub(".*_", "", base_python)
+
+# Load and name files ----------------------------------------------------------
+
+python_list  <- lapply(python_files, fread)
+fortran_list <- lapply(fortran_files, fread)
+
+names(python_list) <- model_names_python
+names(fortran_list) <- model_names_fortran
+
+# RBIND ------------------------------------------------------------------------
+
+make_callgraph <- function(lst, lang) {
+  rbindlist(lst, idcol = "model") %>%
+    .[, language := lang] %>%
+    .[, .(model, language, `function`, call)] %>%
+    setnames(., c("function", "call"), c("from", "to"))
+}
+
+python_callgraphs  <- make_callgraph(python_list,  "python") 
+fortran_callgraphs <- make_callgraph(fortran_list, "fortran")
+
+all_callgraphs <- rbind(python_callgraphs, fortran_callgraphs)
+
+# CREATE THE NETWORK ###########################################################
 
 # Define the weights to characterize risky nodes -------------------------------
 
@@ -500,8 +538,361 @@ cc_unique <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
   lapply(., function(x) 
     x[, .(model, language, `function`, cyclomatic_complexity, complexity_category, type)]) %>%
   rbindlist() %>%
-  .[model == "CTSM"] %>%
-  .[type %in% c("SUBROUTINE", "FUNCTION")] %>%
+  setnames(., "function", "name") %>%
+  arrange(desc(cyclomatic_complexity)) %>%
+  distinct(name, .keep_all = TRUE)
+
+# CREATE NETWORKS FROM CALL GRAPHS #############################################
+
+all_graphs <- all_callgraphs[, .(graph = list(as_tbl_graph(.SD, directed = TRUE))), .(model, language)] %>%
+  .[, graph:= Map(function(g, m, lang) {
+    
+  comp_sub <- cc_unique[model == m & language == lang]
+  
+  g %>%
+    activate(nodes) %>%
+    
+    # Left join with dataset with cyclomatic complexity values -----------------
+  
+  left_join(comp_sub, by = "name") %>%
+    
+    # Remove Python MODULE_AGG / CLASS_AGG nodes from this graph 
+    # because they are not callable --------------------------------------------
+  
+  filter(!(language == "python" & type %in% c("MODULE_AGG", "CLASS_AGG"))) %>%
+    
+    # Calculation of key network metrics ---------------------------------------
+  
+    mutate(indeg = centrality_degree(mode = "in"),
+           outdeg = centrality_degree(mode = "out"),
+           btw = centrality_betweenness(directed = TRUE, weights = NULL),
+           cyclo_scaled = rescale(cyclomatic_complexity),
+           indeg_scaled = rescale(indeg),
+           btw_scaled = rescale(btw),
+           risk_node = alpha * cyclo_scaled + beta * indeg_scaled + gamma * btw_scaled
+    )},
+  
+    graph, model, language
+  )
+]
+
+# COMPUTE ALL PATHS AND THEIR RISK SCORES ######################################
+
+all_graphs[, paths_tbl:= lapply(graph, all_paths_fun)]
+
+# PLOT ALL CALLGRAPHS ##########################################################
+
+all_graphs[, plot_obj := mapply(plot_top_risky_paths_fun, call_g = graph, 
+                                paths_tbl = paths_tbl, model.name = model,
+                                language   = language, SIMPLIFY = FALSE)]
+
+
+
+
+
+
+
+
+
+# Step 1: Extract nodes from each tbl_graph
+all_graphs[, nodes := lapply(graph, function(g) {
+  g %>% activate(nodes) %>% as_tibble()
+})]
+
+# Step 2: Unnest nodes into long format
+nodes_long <- all_graphs %>%
+  .[, ID:= .I] %>%
+  .[, .(ID, nodes)] %>%
+  tidyr::unnest(nodes) %>%
+  data.table()
+
+nodes_long[, .(max = max(indeg, na.rm = TRUE), 
+                min = min(indeg, na.rm = TRUE)), .(model, language)]
+
+
+
+
+
+
+
+
+
+
+library(tidygraph)
+library(ggraph)
+library(dplyr)
+library(purrr)
+library(tibble)
+
+plot_top_risky_paths <- function(call_g, paths_tbl, model.name = "") {
+  # paths_tbl must already contain: path_nodes, p_path_fail, risk_sum, indeg in call_g
+  
+  # If there are no paths, nothing to plot
+  if (nrow(paths_tbl) == 0) {
+    message("No paths in paths_tbl; skipping plot for: ", model.name)
+    return(invisible(NULL))
+  }
+  
+  # ---- Top 10 most risky paths (by p_path_fail) -----------------------------
+  top_paths <- paths_tbl %>% 
+    arrange(desc(p_path_fail)) %>% 
+    slice_head(n = 10)
+  
+  print(top_paths)
+  
+  k <- min(10, nrow(top_paths))
+  top_k_paths <- top_paths %>% 
+    slice_head(n = k)
+  
+  # ---- Build edge list for those paths --------------------------------------
+  path_edges_all <- purrr::imap_dfr(top_k_paths$path_nodes, function(nodes_vec, pid) {
+    tibble(
+      from    = head(nodes_vec, -1),
+      to      = tail(nodes_vec, -1),
+      path_id = pid,
+      risk_sum = top_k_paths$risk_sum[pid]
+    )
+  })
+  
+  ig2 <- as.igraph(call_g)
+  edge_df_names <- igraph::as_data_frame(ig2, what = "edges") %>%
+    dplyr::mutate(.edge_idx = dplyr::row_number())
+  
+  # ---- Collapse duplicate edges across paths --------------------------------
+  path_edges_collapsed <- path_edges_all %>%
+    dplyr::group_by(from, to) %>%
+    dplyr::summarise(
+      path_freq      = dplyr::n(),
+      risk_mean_path = mean(risk_sum, na.rm = TRUE),
+      .groups        = "drop"
+    )
+  
+  # ---- Join with all edges ---------------------------------------------------
+  edge_marks <- edge_df_names %>%
+    dplyr::left_join(path_edges_collapsed, by = c("from", "to")) %>%
+    dplyr::mutate(
+      on_top_path    = !is.na(path_freq),
+      path_freq      = ifelse(is.na(path_freq), 0L, path_freq),
+      risk_mean_path = ifelse(is.na(risk_mean_path), 0, risk_mean_path)
+    )
+  
+  # ---- Prepare graph for plotting -------------------------------------------
+  call_g_sugi <- call_g %>%
+    tidygraph::activate(edges) %>%
+    dplyr::mutate(
+      on_top_path    = edge_marks$on_top_path,
+      path_freq      = edge_marks$path_freq,
+      risk_mean_path = edge_marks$risk_mean_path
+    ) %>%
+    tidygraph::activate(nodes) %>%
+    dplyr::mutate(
+      cyclo_class = dplyr::case_when(
+        cyclomatic_complexity <= 10 ~ "green",
+        cyclomatic_complexity <= 20 ~ "orange",
+        cyclomatic_complexity <= 50 ~ "red",
+        cyclomatic_complexity >  50 ~ "purple",
+        TRUE                        ~ "grey"
+      )
+    )
+  
+  # Mark nodes that appear in at least one of the top-k risky paths
+  risky_nodes <- unique(unlist(top_k_paths$path_nodes))
+  call_g_sugi <- call_g_sugi %>%
+    tidygraph::activate(nodes) %>%
+    dplyr::mutate(on_top_node = name %in% risky_nodes)
+  
+  call_g_sugi %>%
+    tidygraph::activate(nodes) %>%
+    data.frame() %>%
+    data.table::data.table() %>%
+    .[order(-indeg)]
+  
+  # ---- Plot ------------------------------------------------------------------
+  p_sugi <- ggraph(call_g_sugi, layout = "sugiyama") +
+    
+    # 1) Background: non-top edges
+    ggraph::geom_edge_link0(
+      aes(filter = !on_top_path),
+      colour = "grey80", alpha = 0.05, width = 0.3
+    ) +
+    
+    # 2) Foreground: risky edges
+    ggraph::geom_edge_link0(
+      aes(
+        filter = on_top_path,
+        colour = risk_mean_path,
+        width  = pmin(pmax(path_freq, 0.5), 3)
+      ),
+      alpha = 0.9,
+      arrow = grid::arrow(length = grid::unit(1, "mm"))
+    ) +
+    ggraph::scale_edge_colour_gradient(low = "orange", high = "red", guide = "none") +
+    ggraph::scale_edge_width(range = c(0.3, 2.2), guide = "none") +
+    
+    # Nodes
+    ggraph::geom_node_point(size = 1.2, colour = "#BDBDBD", alpha = 0.35,
+                            show.legend = FALSE) +
+    ggraph::geom_node_point(
+      aes(filter = on_top_node, size = indeg, fill = cyclo_class),
+      shape = 21, alpha = 0.95, show.legend = FALSE
+    ) +
+    scale_fill_manual(
+      values = c(
+        green  = "yellowgreen",
+        orange = "orange",
+        red    = "red",
+        purple = "purple",
+        grey   = "#A0A0A0"
+      ),
+      guide = "none"
+    ) +
+    theme_AP() +
+    labs(x = "", y = "") +
+    theme(
+      axis.text.y   = element_blank(),
+      axis.ticks.y  = element_blank(),
+      axis.text.x   = element_blank(),
+      axis.ticks.x  = element_blank(),
+      legend.position = "top"
+    ) +
+    ggtitle(model.name)
+  
+  print(p_sugi)
+  invisible(p_sugi)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# COMPUTE MORE PATH-LEVEL METRICS ##############################################
+
+paths_tbl %>%
+  mutate(max_node_risk = purrr::map_dbl(path_nodes, ~ max(get_path_risks_fun(.x), na.rm = TRUE)),
+         
+         # Nonlinear failure aggregation: 1 - Π (1 - p_i). Probability that at
+         # least one node on the path fails (formula is "union of independent events")
+         # --------------------------------------------------------------------------
+         
+         p_path_fail = purrr::map_dbl(path_nodes, ~ {
+           r <- get_path_risks_fun(.x) 
+           r <- r[is.finite(r) & !is.na(r)]
+           if (length(r) == 0) 0 else 1 - prod(pmax(0, pmin(1, 1 - r)))
+         }),
+         
+         # Inequality of risk along the path (concentration): Gini index: high Gini
+         # means that few risky nodes dominate the path. Low Gini + high mean means
+         # that many risk nodes (diffuse fragility) ---------------------------------
+         
+         gini_node_risk = purrr::map_dbl(path_nodes, ~ {
+           r <- get_path_risks_fun(.x); r <- r[is.finite(r) & !is.na(r)]
+           if (length(r) <= 1) 0 else ineq::Gini(r)
+         }),
+         
+         # Trend of risk along the path (slope of linear fit over node order): positive slope
+         # means risk increases downstream (dangerous propagation chain); negative slope
+         # means high-risk nodes early but safer callees (lower systemic threat) ----
+         # --------------------------------------------------------------------------
+         
+         risk_slope = purrr::map_dbl(path_nodes, ~ {
+           r <- get_path_risks_fun(.x); r <- r[is.finite(r) & !is.na(r)]
+           if (length(r) <= 1) 0 else as.numeric(coef(lm(r ~ seq_along(r)))[2])
+         })
+  )
+
+
+all_graphs <- all_graphs[, all_paths:= lapply(graph, all_paths_fun)]
+
+# COMPUTE RISK OF EACH PATH ####################################################
+
+all_graphs <- all_graphs[, paths_tbl:= lapply(all_paths, function(ap) {
+  
+  # ap is a list of lists of paths; flatten to a single list of paths ----------
+  
+  ap_flat <- flatten(ap)   
+  
+  if (length(ap_flat) == 0) {
+    
+    # return empty tibble if no paths -----------
+    
+    return(tibble())
+  }
+  
+  map_dfr(ap_flat, risk_of_path_fun)
+})]
+
+
+all_graphs$all_paths[[1]]
+
+
+
+
+
+
+
+
+
+
+all_graphs$paths_tbl
+
+
+all_graphs[, pairs_st := lapply(graph, pairs_st_fun)]
+
+
+all_graphs$pairs_st
+
+
+
+
+
+
+as_tbl_graph(all_callgraphs, directed = TRUE) %>%
+  left_join(cc_unique %>%
+              select(name, type, language, cyclomatic_complexity, complexity_category), 
+            by = "name")
+
+
+
+
+
+
+
+model.name <- "VIC"
+
+callgraph_edges <- fread(paste("./datasets/callgraphs/callgraph_edges_", model.name, ".csv", sep = ""))
+setnames(callgraph_edges, c("caller", "callee", "lang"), c("from", "to", "language"))
+setcolorder(callgraph_edges, c("from", "to", "model", "language", "caller_line", 
+                               "callee_file_hint", "callee_kind"))
+callgraph_edges[, model:= sub("^\\d+_", "", model)]
+
+# Keep only the function in the column "from" if the language is python --------
+
+callgraph_edges[language == "python" & grepl(":", from, fixed = TRUE),
+   from := sub(".*:+", "", from)]
+
+# Define the weights to characterize risky nodes -------------------------------
+
+alpha <- 0.6  # Weight to cyclomatic complexity
+beta  <- 0.3  # Weight to in-degree (impact of bug upstream)
+gamma <- 0.1  # Weight to betweenness (critical bridge)
+
+# Ensure unique names complexity dataset ---------------------------------------
+
+cc_unique <- metrics_combined[grep("^func_", names(metrics_combined))] %>%
+  lapply(., function(x) 
+    x[, .(model, language, `function`, cyclomatic_complexity, complexity_category, type)]) %>%
+  rbindlist() %>%
+  .[model == model.name] %>%
   setnames(., "function", "name") %>%
   arrange(desc(cyclomatic_complexity)) %>%
   distinct(name, .keep_all = TRUE)
@@ -521,6 +912,7 @@ call_g <- as_tbl_graph(callgraph_edges, directed = TRUE) %>%
     btw_scaled = rescale(btw),
     risk_node = alpha * cyclo_scaled + beta * indeg_scaled + gamma * btw_scaled
   )
+
   
 # Find paths from entries (in-degree = 0) to sinks (out-degree = 0) ----------
 
@@ -552,13 +944,13 @@ cl <- parallel::makeCluster(ncores)
 doParallel::registerDoParallel(cl)
 
 
-all_paths <- foreach(i = 1:nrow(pairs_st), .combine = 'c', .packages = "igraph") %dopar% {
+all_paths <- foreach(i = 1:nrow(pairs_st), .combine = "c", .packages = "igraph") %dopar% {
   s <- pairs_st$s[i]
   t <- pairs_st$t[i]
   igraph::all_simple_paths(ig, from = s, to = t, mode = "out")
 }
 
-parallel::stopCluster(cl)
+stopCluster(cl)
   
 # Calculate risk of a given path -----------------------------------------------
 
@@ -609,7 +1001,9 @@ paths_tbl %>%
   geom_histogram() +
   geom_vline(data = vline_df, aes(xintercept = xintercept), color = "red",
              linetype = 2) +
-  facet_wrap(~variable, scales = "free_x")
+  facet_wrap(~variable, scales = "free_x") +
+  labs(x = "Value", y = "Counts") +
+  theme_AP()
 
 # Top 10 most risky paths (by probability of failure) --------------------------
 
@@ -685,6 +1079,12 @@ call_g_sugi <- call_g_sugi %>%
   activate(nodes) %>%
   mutate(on_top_node = name %in% risky_nodes)
 
+call_g_sugi %>%
+  activate(nodes) %>%
+  data.frame() %>%
+  data.table() %>%
+  .[order(-indeg)]
+
 # PLOT #########################################################################
 
 p_sugi <- ggraph(call_g_sugi, layout = "sugiyama") +
@@ -716,12 +1116,13 @@ p_sugi <- ggraph(call_g_sugi, layout = "sugiyama") +
         axis.ticks.y = element_blank(), 
         axis.text.x = element_blank(), 
         axis.ticks.x = element_blank(), 
-        legend.position = "top") 
+        legend.position = "top") + 
+  ggtitle(model.name)
 
 p_sugi
 
 
-
+all_graphs
 
 
 
